@@ -1,0 +1,14 @@
+npm install xml2js
+
+http-proxy-middleware
+
+http://localhost/evals/admin123/index.php/configure/advanced/import/?_token=ngW7dletTJUcG9TwQYVJrTX3k-KAyv1nhzX8Zni2qWY
+
+
+
+id;name;reference;price_tex;price_tin;category;manufacturer;active;quantity;minimal_quantity;description_short;description;meta_title;image;accessories
+;Laptop Gaming;LAPTOP-001;1200.00;1440.00;Électronique,Ordinateurs;1;1;10;1;Un excellent laptop gaming;Laptop gaming haute performance avec processeur dernier cri et carte graphique RTX;Meilleur Laptop Gaming;https://example.com/images/laptop.jpg;
+;Souris Sans Fil;MOUSE-001;25.50;30.60;Informatique,Accessoires;2;1;50;2;Souris sans fil ergonomique;Souris sans fil avec batterie longue durée et connexion 2.4GHz;Souris Ergonomique;https://example.com/images/mouse.jpg;LAPTOP-001
+;Clavier Mécanique;KEYBOARD-001;85.00;102.00;Informatique,Accessoires;3;1;20;1;Clavier mécanique RGB;Clavier mécanique avec switches Cherry MX et éclairage RGB personnalisable;Clavier Mécanique RGB;https://example.com/images/keyboard.jpg;LAPTOP-001,MOUSE-001
+;Casque Bluetooth;HEADSET-001;120.00;144.00;Audio;4;1;15;1;Casque Bluetooth premium;Casque sans fil avec réduction de bruit active et autonomie 30h;Casque Bluetooth Premium;https://example.com/images/headset.jpg;
+;Webcam 4K;WEBCAM-001;180.00;216.00;Électronique,Accessoires informatiques;5;1;8;1;Webcam 4K ultra HD;Webcam 4K avec microphone stéréo intégré pour streaming professionnel;Webcam 4K HD;https://example.com/images/webcam.jpg;
