@@ -16,15 +16,19 @@
   align-items: center;
 }
 
-.navbar-logo a {
+.navbar-logo-btn {
   color: #61dafb;
   font-size: 1.5rem;
   font-weight: bold;
-  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
   transition: color 0.3s ease;
+  padding: 0;
+  font: inherit;
 }
 
-.navbar-logo a:hover {
+.navbar-logo-btn:hover {
   color: #fff;
 }
 
@@ -48,11 +52,23 @@
   padding: 0.5rem 1rem;
   border-radius: 4px;
   transition: all 0.3s ease;
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
 }
 
 .nav-link:hover {
   background-color: #61dafb;
   color: #282c34;
+}
+
+.nav-link.active {
+  background-color: #61dafb;
+  color: #282c34;
+  font-weight: bold;
 }
 
 @media screen and (max-width: 768px) {

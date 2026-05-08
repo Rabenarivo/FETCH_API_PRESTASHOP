@@ -12,3 +12,14 @@ id;name;reference;price_tex;price_tin;category;manufacturer;active;quantity;mini
 ;Clavier Mécanique;KEYBOARD-001;85.00;102.00;Informatique,Accessoires;3;1;20;1;Clavier mécanique RGB;Clavier mécanique avec switches Cherry MX et éclairage RGB personnalisable;Clavier Mécanique RGB;https://example.com/images/keyboard.jpg;LAPTOP-001,MOUSE-001
 ;Casque Bluetooth;HEADSET-001;120.00;144.00;Audio;4;1;15;1;Casque Bluetooth premium;Casque sans fil avec réduction de bruit active et autonomie 30h;Casque Bluetooth Premium;https://example.com/images/headset.jpg;
 ;Webcam 4K;WEBCAM-001;180.00;216.00;Électronique,Accessoires informatiques;5;1;8;1;Webcam 4K ultra HD;Webcam 4K avec microphone stéréo intégré pour streaming professionnel;Webcam 4K HD;https://example.com/images/webcam.jpg;
+
+
+
+
+
+id;name;price_tex;price_tin;quantity;reference;id_category;active;description_short;id_manufacturer;supplier_reference;ean13;weight
+;T-Shirt Basique;15.00;17.95;100;REF-001;3;1;Un t-shirt en coton 100%;1;SUP-001;1234567890123;0.2
+;Jeans Classic;45.00;53.95;50;REF-002;3;1;Jeans denim bleu foncé;1;SUP-002;1234567890124;0.6
+;Accessoire Ceinture;12.00;14.35;150;REF-003;7;1;Ceinture en cuir noir;2;SUP-003;1234567890125;0.1
+;Chaussures Été;35.00;41.95;30;REF-004;3;1;Chaussures été respirantes;1;SUP-001;1234567890126;0.4
+;Pull Laine;25.00;29.95;75;REF-005;3;1;Pull en laine merinos;1;SUP-002;1234567890127;0.5

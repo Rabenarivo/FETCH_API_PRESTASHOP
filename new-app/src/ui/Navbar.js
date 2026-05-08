@@ -1,25 +1,31 @@
 import React from 'react';
 import './Navbar.css';
 
-function Navbar() {
+function Navbar({ currentPage, setCurrentPage }) {
   return (
     <nav className="navbar">
       <div className="navbar-container">
         <div className="navbar-logo">
-          <a href="/">Prestashop</a>
+          <a onClick={() => setCurrentPage('products')} style={{ cursor: 'pointer' }}>
+            Prestashop
+          </a>
         </div>
         <ul className="nav-menu">
           <li className="nav-item">
-            <a href="/" className="nav-link">Accueil</a>
+            <button 
+              className={`nav-link ${currentPage === 'products' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('products')}
+            >
+              Produits
+            </button>
           </li>
           <li className="nav-item">
-            <a href="#products" className="nav-link">Produits</a>
-          </li>
-          <li className="nav-item">
-            <a href="#about" className="nav-link">À propos</a>
-          </li>
-          <li className="nav-item">
-            <a href="#contact" className="nav-link">Contact</a>
+            <button 
+              className={`nav-link ${currentPage === 'import' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('import')}
+            >
+              Importer
+            </button>
           </li>
         </ul>
       </div>
