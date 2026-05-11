@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { getProducts, getProductDetails } from '../api/prestashopApi';
+import { getProducts } from '../api/prestashopApi';
 import './Products.css';
 
 function Products() {
   const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [productDetails, setProductDetails] = useState(null);
 
   useEffect(() => {
     fetchProducts();
@@ -15,35 +12,13 @@ function Products() {
 
   const fetchProducts = async () => {
     try {
-      setLoading(true);
       setError(null);
       const data = await getProducts();
       setProducts(data);
     } catch (err) {
       setError(err.message || 'Erreur lors du chargement des produits');
       console.error(err);
-    } finally {
-      setLoading(false);
     }
-  };
-
-  const handleProductClick = async (productId) => {
-    try {
-      setLoading(true);
-      const details = await getProductDetails(productId);
-      setProductDetails(details);
-      setSelectedProduct(productId);
-    } catch (err) {
-      setError(err.message || 'Erreur lors du chargement des détails');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const closeDetails = () => {
-    setSelectedProduct(null);
-    setProductDetails(null);
   };
 
   if (error) {
@@ -62,50 +37,34 @@ function Products() {
   return (
     <div className="products-container" id="products">
       <h2>Nos Produits</h2>
-      
-      {loading ? (
-        <div className="loading">
-          <p>Chargement des produits...</p>
-        </div>
-      ) : (
-        <>
-          <div className="products-grid">
-            {products && products.length > 0 ? (
-              products.map((product) => (
-                <div 
-                  key={product.id} 
-                  className="product-card"
-                  onClick={() => handleProductClick(product.id)}
-                >
-                  <div className="product-id">#ID: {product.id}</div>
-                  <div className="product-title">Produit {product.id}</div>
-                  <div className="product-link">
-                    <a href={product.href} target="_blank" rel="noopener noreferrer">
-                      Voir les détails
-                    </a>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p>Aucun produit trouvé</p>
-            )}
-          </div>
 
-          {selectedProduct && productDetails && (
-            <div className="modal-overlay" onClick={closeDetails}>
-              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                <div className="modal-header">
-                  <h3>Détails du Produit</h3>
-                  <button className="close-btn" onClick={closeDetails}>✕</button>
-                </div>
-                <div className="modal-body">
-                  <pre>{JSON.stringify(productDetails, null, 2)}</pre>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
+      <div className="products-list-wrap">
+        {products && products.length > 0 ? (
+          <ul className="products-list">
+            <li className="products-list-header">
+              <span>ID</span>
+              <span>Nom</span>
+              <span>Prix TTC</span>
+              <span>Prix HT</span>
+              <span>Taxes</span>
+            </li>
+            {products.map((product) => (
+              <li
+                key={product.id}
+                className="product-row"
+              >
+                <span>{product.id}</span>
+                <span>{product.name}</span>
+                <span>{Number(product.prix_ttc || 0).toFixed(2)} Ar</span>
+                <span>{Number(product.prix_ht || product.price || 0).toFixed(2)} Ar</span>
+                <span>{Number(product.taxes || 0).toFixed(3)}%</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>Aucun produit trouvé</p>
+        )}
+      </div>
     </div>
   );
 }

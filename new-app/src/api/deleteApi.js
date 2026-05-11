@@ -10,6 +10,9 @@ export const DELETE_API_GROUPS = {
   catalogue: [
     'products',
     'categories',
+    'tax_rules',
+    'tax_rule_groups',
+    'taxes',
     'combinations',
     'product_options',
     'product_option_values',
@@ -59,7 +62,7 @@ export const FORBIDDEN_DELETE_APIS = [
 // IDs a ignorer par ressource (ex: categories par defaut).
 // Ces IDs ne peuvent pas etre supprimes (erreur 88 = "Id wasn't deleted").
 const IDS_TO_IGNORE = {
-  categories: [1, 2], // Racine et "Non classé" (défaut PrestaShop)
+  categories: [1], // Racine et "Non classé" (défaut PrestaShop)
 };
 
 // Ressources pour lesquelles on ignore silencieusement l'erreur 88.
@@ -103,6 +106,9 @@ export const DELETE_ORDER = [
   'product_options',
   'product_feature_values',
   'product_features',
+  'tax_rules',
+  'tax_rule_groups',
+  'taxes',
   'specific_price_rules',
   'cart_rules',
   'suppliers',
@@ -123,6 +129,7 @@ const IRREGULAR_SINGULAR = {
   product_suppliers: 'product_supplier',
   specific_prices: 'specific_price',
   specific_price_rules: 'specific_price_rule',
+  taxes: 'tax',
   customer_threads: 'customer_thread',
   customer_messages: 'customer_message',
   order_details: 'order_detail',

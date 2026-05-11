@@ -5,11 +5,13 @@ function Navbar({ currentPage, setCurrentPage }) {
   return (
     <nav className="navbar">
       <div className="navbar-container">
-        <div className="navbar-logo">
-          <a onClick={() => setCurrentPage('products')} style={{ cursor: 'pointer' }}>
-            Prestashop
-          </a>
-        </div>
+        <button
+          className="navbar-logo-btn"
+          onClick={() => setCurrentPage('products')}
+          type="button"
+        >
+          Prestashop
+        </button>
         <ul className="nav-menu">
           <li className="nav-item">
             <button 
@@ -21,10 +23,26 @@ function Navbar({ currentPage, setCurrentPage }) {
           </li>
           <li className="nav-item">
             <button 
-              className={`nav-link ${currentPage === 'import' ? 'active' : ''}`}
-              onClick={() => setCurrentPage('import')}
+              className={`nav-link ${currentPage === 'importFichier1Test' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('importFichier1Test')}
             >
-              Importer
+              Test Import Fichier 1
+            </button>
+          </li>
+          <li className="nav-item">
+            <button 
+              className={`nav-link ${currentPage === 'categories' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('categories')}
+            >
+              Categories
+            </button>
+          </li>
+          <li className="nav-item">
+            <button 
+              className={`nav-link ${currentPage === 'reset' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('reset')}
+            >
+              Reinitialiser
             </button>
           </li>
         </ul>

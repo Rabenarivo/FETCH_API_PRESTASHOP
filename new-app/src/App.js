@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import './App.css';
 import Navbar from './ui/Navbar';
 import Products from './components/Products';
-import ProductImporter from './components/import';
+import Categories from './components/Categories';
+import ImportFichier1Test from './components/ImportFichier1Test';
 import ResetDatabase from './components/ResetDatabase';
 
 function App() {
@@ -12,7 +13,8 @@ function App() {
     <div className="App">
       <Navbar currentPage={currentPage} setCurrentPage={setCurrentPage} />
       {currentPage === 'products' && <Products />}
-      {currentPage === 'import' && <ProductImporter />}
+      {currentPage === 'categories' && <Categories />}
+      {currentPage === 'importFichier1Test' && <ImportFichier1Test />}
       {currentPage === 'reset' && <ResetDatabase />}
     </div>
   );
