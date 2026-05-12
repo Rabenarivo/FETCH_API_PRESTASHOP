@@ -15,6 +15,14 @@ function Navbar({ currentPage, setCurrentPage }) {
         <ul className="nav-menu">
           <li className="nav-item">
             <button 
+              className={`nav-link ${currentPage === 'dashboard' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('dashboard')}
+            >
+              Tableau de bord
+            </button>
+          </li>
+          <li className="nav-item">
+            <button 
               className={`nav-link ${currentPage === 'products' ? 'active' : ''}`}
               onClick={() => setCurrentPage('products')}
             >
@@ -23,26 +31,10 @@ function Navbar({ currentPage, setCurrentPage }) {
           </li>
           <li className="nav-item">
             <button 
-              className={`nav-link ${currentPage === 'importFichier1Test' ? 'active' : ''}`}
-              onClick={() => setCurrentPage('importFichier1Test')}
+              className={`nav-link ${currentPage === 'import' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('import')}
             >
-              Test Import Fichier 1
-            </button>
-          </li>
-          <li className="nav-item">
-            <button 
-              className={`nav-link ${currentPage === 'importFichier2Test' ? 'active' : ''}`}
-              onClick={() => setCurrentPage('importFichier2Test')}
-            >
-              Test Import Fichier 2
-            </button>
-          </li>
-          <li className="nav-item">
-            <button 
-              className={`nav-link ${currentPage === 'importFichier3Test' ? 'active' : ''}`}
-              onClick={() => setCurrentPage('importFichier3Test')}
-            >
-              Test Import Fichier 3
+              Import
             </button>
           </li>
           <li className="nav-item">
@@ -51,6 +43,14 @@ function Navbar({ currentPage, setCurrentPage }) {
               onClick={() => setCurrentPage('categories')}
             >
               Categories
+            </button>
+          </li>
+          <li className="nav-item">
+            <button
+              className={`nav-link ${currentPage === 'commandes' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('commandes')}
+            >
+              Commandes
             </button>
           </li>
           <li className="nav-item">
