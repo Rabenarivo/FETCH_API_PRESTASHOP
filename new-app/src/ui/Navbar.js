@@ -31,6 +31,22 @@ function Navbar({ currentPage, setCurrentPage }) {
           </li>
           <li className="nav-item">
             <button 
+              className={`nav-link ${currentPage === 'importFichier2Test' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('importFichier2Test')}
+            >
+              Test Import Fichier 2
+            </button>
+          </li>
+          <li className="nav-item">
+            <button 
+              className={`nav-link ${currentPage === 'importFichier3Test' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('importFichier3Test')}
+            >
+              Test Import Fichier 3
+            </button>
+          </li>
+          <li className="nav-item">
+            <button 
               className={`nav-link ${currentPage === 'categories' ? 'active' : ''}`}
               onClick={() => setCurrentPage('categories')}
             >

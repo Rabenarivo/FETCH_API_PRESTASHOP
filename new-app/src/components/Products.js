@@ -46,6 +46,7 @@ function Products() {
               <span>Nom</span>
               <span>Prix TTC</span>
               <span>Prix HT</span>
+              <span>Prix Achat</span>
               <span>Taxes</span>
             </li>
             {products.map((product) => (
@@ -57,6 +58,7 @@ function Products() {
                 <span>{product.name}</span>
                 <span>{Number(product.prix_ttc || 0).toFixed(2)} Ar</span>
                 <span>{Number(product.prix_ht || product.price || 0).toFixed(2)} Ar</span>
+                <span>{Number(product.prix_achat || 0).toFixed(2)} Ar</span>
                 <span>{Number(product.taxes || 0).toFixed(3)}%</span>
               </li>
             ))}

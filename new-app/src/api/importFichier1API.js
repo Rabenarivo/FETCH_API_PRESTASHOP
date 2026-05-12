@@ -7,10 +7,12 @@ import {
   hasError,
 } from '../config/parserXML';
 
-const URL_API =
-  process.env.NODE_ENV === 'production'
-    ? process.env.REACT_APP_PRESTASHOP_API_URL
-    : '/evals/api';
+let URL_API = '/evals/api';
+if (process.env.NODE_ENV === 'production') {
+  URL_API = process.env.REACT_APP_PRESTASHOP_API_URL;
+} else {
+  URL_API = '/evals/api';
+}
 
 export const CONFIG_FICHIER1 = {
   idLangue: 1,
@@ -22,6 +24,15 @@ export const CONFIG_FICHIER1 = {
   lignesAIgnorer: 1,
 };
 
+// Ressources/tables manipulees par l'import fichier 1.
+export const TABLES_FICHIER1 = [
+  'categories',
+  'taxes',
+  'tax_rule_groups',
+  'tax_rules',
+  'products',
+];
+
 export const PRESTA_FIELDS_FICHIER1 = [
   { value: '', label: 'Ignorer cette colonne' },
   { value: 'date_produit', label: 'Date produit' },
@@ -30,6 +41,7 @@ export const PRESTA_FIELDS_FICHIER1 = [
   { value: 'prix_ttc', label: 'Prix TTC' },
   { value: 'Taxe', label: 'Taxe' },
   { value: 'categorie', label: 'Catégorie' },
+  { value: 'prix_achat', label: "Prix d'achat" },
 ];
 
 const ENTETES_VERS_CHAMP = {
@@ -46,6 +58,10 @@ const ENTETES_VERS_CHAMP = {
   tax: 'taxe',
   categorie: 'categorie',
   category: 'categorie',
+  prix_achat: 'prix_achat',
+  'prix achat': 'prix_achat',
+  wholesale_price: 'prix_achat',
+  wholesale: 'prix_achat',
 };
 
 const nettoyerTexte = (texte = '') =>
@@ -72,25 +88,37 @@ const slug = (texte) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'categorie';
 
-  const cleCategorie = (nom = '') => normaliserTexte(nom);
-  const cleTaxe = (rate = 0) => Number(rate).toFixed(3);
+const cleCategorie = (nom = '') => normaliserTexte(nom);
+const cleTaxe = (rate = 0) => Number(rate).toFixed(3);
 
 const enEntier = (valeur, defaut = 0) => {
   const n = parseInt(valeur, 10);
-  return Number.isNaN(n) ? defaut : n;
+  if (Number.isNaN(n)) {
+    return defaut;
+  } else {
+    return n;
+  }
 };
 
 const enNombre = (valeur, defaut = 0) => {
   const normalisee = String(valeur ?? '').replace(',', '.').replace(/\s/g, '');
   const n = parseFloat(normalisee);
-  return Number.isNaN(n) ? defaut : n;
+  if (Number.isNaN(n)) {
+    return defaut;
+  } else {
+    return n;
+  }
 };
 
 const detecterSeparateur = (contenu) => {
   const premiereLigne = String(contenu || '').replace(/^\uFEFF/, '').split(/\r?\n/)[0] || '';
   const nbVirgules = (premiereLigne.match(/,/g) || []).length;
   const nbPointVirgules = (premiereLigne.match(/;/g) || []).length;
-  return nbVirgules >= nbPointVirgules ? ',' : ';';
+  if (nbVirgules >= nbPointVirgules) {
+    return ',';
+  } else {
+    return ';';
+  }
 };
 
 const parserCsvSimple = (contenu, separateur = ';') => {
@@ -158,11 +186,27 @@ const requeteApi = async (chemin, options = {}) => {
 
   const reponse = await fetch(`${URL_API}/${chemin}`, init);
   const texte = await reponse.text();
-  const donnees = texte ? parsePrestaXML(texte) : null;
+  let donnees = null;
+  if (texte) {
+    donnees = parsePrestaXML(texte);
+  } else {
+    donnees = null;
+  }
 
   if (!reponse.ok) {
-    const messageApi = donnees ? getErrorMessage(donnees) : '';
-    throw new Error(`HTTP ${reponse.status} ${methode} /${chemin}${messageApi ? ` - ${messageApi}` : ''}`);
+    let messageApi = '';
+    if (donnees) {
+      messageApi = getErrorMessage(donnees);
+    } else {
+      messageApi = '';
+    }
+    let suffixeErreur = '';
+    if (messageApi) {
+      suffixeErreur = ` - ${messageApi}`;
+    } else {
+      suffixeErreur = '';
+    }
+    throw new Error(`HTTP ${reponse.status} ${methode} /${chemin}${suffixeErreur}`);
   }
 
   // Certaines reponses PrestaShop retournent HTTP 200 avec un bloc <errors> XML.
@@ -195,9 +239,19 @@ const lireApercuCsv = (file, separateur = ';', maxRows = 0) =>
     const reader = new FileReader();
     reader.onload = (event) => {
       const contenu = String(event.target.result || '').replace(/^\uFEFF/, '');
-      const separateurReel = separateur === 'auto' ? detecterSeparateur(contenu) : separateur;
+      let separateurReel = separateur;
+      if (separateur === 'auto') {
+        separateurReel = detecterSeparateur(contenu);
+      } else {
+        separateurReel = separateur;
+      }
       const parsed = parserCsvSimple(contenu, separateurReel);
-      const lignesApercu = maxRows > 0 ? parsed.rows.slice(0, maxRows) : parsed.rows;
+      let lignesApercu = parsed.rows;
+      if (maxRows > 0) {
+        lignesApercu = parsed.rows.slice(0, maxRows);
+      } else {
+        lignesApercu = parsed.rows;
+      }
 
       resolve({ headers: parsed.headers, rows: lignesApercu, separateur: separateurReel });
     };
@@ -214,7 +268,11 @@ export const detecterMappingFichier1 = (headers) =>
       (field) => field.value && (normaliserTexte(field.value) === h || normaliserTexte(field.label) === h)
     );
 
-    return match ? match.value : '';
+    if (match) {
+      return match.value;
+    } else {
+      return '';
+    }
   });
 
 const trouverCollectionId = async (url, collectionName) => {
@@ -222,7 +280,11 @@ const trouverCollectionId = async (url, collectionName) => {
   const items = getCollection(donnees, collectionName);
   if (!items.length) return null;
   const id = getNumber(items[0]?.id, null);
-  return id === null ? null : enEntier(id, null);
+  if (id === null) {
+    return null;
+  } else {
+    return enEntier(id, null);
+  }
 };
 
 const trouverCategorieParNom = async (nom) => {
@@ -444,6 +506,7 @@ const creerProduitApi = async (ligne, config, idCategorie, idGroupeTaxe, prixHt)
     id_category_default: idCategorie,
     id_tax_rules_group: idGroupeTaxe,
     price_ht: prixHt,
+    wholesale_price: enNombre(ligne.prix_achat, 0),
   });
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -454,6 +517,7 @@ const creerProduitApi = async (ligne, config, idCategorie, idGroupeTaxe, prixHt)
     <id_shop_default>${config.idBoutique}</id_shop_default>
     <reference>${nettoyerTexte(reference)}</reference>
     <price>${prixHt.toFixed(6)}</price>
+    <wholesale_price>${enNombre(ligne.prix_achat, 0).toFixed(6)}</wholesale_price>
     <active>1</active>
     <available_for_order>1</available_for_order>
     <show_price>1</show_price>
@@ -482,8 +546,11 @@ const creerProduitApi = async (ligne, config, idCategorie, idGroupeTaxe, prixHt)
 };
 
 export const importerFichier1AvecApi = async (file, mapping, onProgress, options = {}) => {
+  // 1) Charger le CSV + fusionner la configuration runtime.
   const config = { ...CONFIG_FICHIER1, ...options };
   const { headers, rows, separateur } = await lireApercuCsv(file, config.separateur, 0);
+
+  // 2) Initialiser les caches pour eviter les requetes API repetitives.
   const cache = {
     categories: new Map(),
     taxes: new Map(),
@@ -495,7 +562,9 @@ export const importerFichier1AvecApi = async (file, mapping, onProgress, options
     lignesIgnorees: config.lignesAIgnorer,
     totalHeaders: headers.length,
   });
+  console.log('[fichier1] tables utilisees', TABLES_FICHIER1);
 
+  // 3) Retirer les lignes d'en-tete deja gerees par le mapping.
   const extra = Math.max(0, enEntier(config.lignesAIgnorer, 1) - 1);
   const lignes = rows.slice(extra);
   const total = lignes.length;
@@ -505,7 +574,12 @@ export const importerFichier1AvecApi = async (file, mapping, onProgress, options
   const warnings = [];
 
   const notifier = (status) => {
-    const percent = total > 0 ? Math.round((done / total) * 100) : 100;
+    let percent = 100;
+    if (total > 0) {
+      percent = Math.round((done / total) * 100);
+    } else {
+      percent = 100;
+    }
     if (typeof onProgress === 'function') onProgress({ done, total, percent, status });
   };
 
@@ -514,19 +588,26 @@ export const importerFichier1AvecApi = async (file, mapping, onProgress, options
     const ligne = construireLigne(headers, lignes[i], mapping);
 
     try {
+      // 4) Validation minimale de la ligne CSV.
       if (!ligne.reference) throw new Error('Reference manquante');
       if (!ligne.nom) throw new Error('Nom manquant');
       if (!ligne.categorie) throw new Error('Categorie manquante');
       if (ligne.prix_ttc === '' || ligne.prix_ttc === undefined) throw new Error('Prix TTC manquant');
 
+      // 5) Categorie (recherche puis creation si necessaire).
       notifier('categorie');
       const idCategorie = await obtenirOuCreerCategorie(ligne.categorie, config, cache);
-        // await mettreAJourCategorie(idCategorie, ligne.categorie, config);
 
+      // 6) Conversion TTC -> HT a partir de la taxe de la ligne.
       const taxeBrute = String(ligne.taxe || '').replace('%', '').trim();
       const tauxTaxe = enNombre(taxeBrute, 0);
       const prixTtc = enNombre(ligne.prix_ttc, 0);
-      const prixHt = tauxTaxe > 0 ? prixTtc / (1 + tauxTaxe / 100) : prixTtc;
+      let prixHt = prixTtc;
+      if (tauxTaxe > 0) {
+        prixHt = prixTtc / (1 + tauxTaxe / 100);
+      } else {
+        prixHt = prixTtc;
+      }
 
       let idGroupeTaxe = 0;
       if (tauxTaxe > 0) {
@@ -545,6 +626,7 @@ export const importerFichier1AvecApi = async (file, mapping, onProgress, options
         idGroupeTaxe = enEntier(config.idTaxeRulesGroupDefaut, 0);
       }
 
+      // 7) Produit: ignorer si deja present, sinon creer.
       const idProduitExistant = await trouverProduitParReference(ligne.reference);
 
       if (idProduitExistant) {

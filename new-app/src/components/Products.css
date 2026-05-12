@@ -27,7 +27,7 @@
 .products-list-header,
 .product-row {
   display: grid;
-  grid-template-columns: 90px minmax(260px, 1fr) 140px 140px 110px;
+  grid-template-columns: 90px minmax(220px, 1fr) 130px 130px 130px 110px;
   gap: 1rem;
   align-items: center;
   padding: 0.9rem 1rem;
@@ -174,7 +174,7 @@
 
   .products-list-header,
   .product-row {
-    grid-template-columns: 70px minmax(160px, 1fr) 110px 110px 90px;
+    grid-template-columns: 60px minmax(140px, 1fr) 100px 100px 100px 85px;
     gap: 0.5rem;
     padding: 0.75rem;
     font-size: 0.9rem;

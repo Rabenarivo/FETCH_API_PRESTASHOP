@@ -113,7 +113,7 @@ const buildTaxRateByGroupMap = async () => {
 export const getProducts = async () => {
   try {
     const [productsResponse, taxRateByGroup] = await Promise.all([
-      fetch(`${API_URL}/products?display=[id,name,price,id_tax_rules_group]&sort=[id_ASC]&limit=200`, {
+      fetch(`${API_URL}/products?display=[id,name,price,wholesale_price,id_tax_rules_group]&sort=[id_ASC]&limit=200`, {
         method: 'GET',
         headers: getAuthHeader()
       }),
@@ -141,6 +141,7 @@ export const getProducts = async () => {
         prix_ht: prixHt,
         prix_ttc: prixTtc,
         taxes: tauxTaxe,
+        prix_achat: toNumber(product?.wholesale_price, 0),
         id_tax_rules_group: idTaxRulesGroup,
         href: product?.['xlink:href'] || '',
       };
