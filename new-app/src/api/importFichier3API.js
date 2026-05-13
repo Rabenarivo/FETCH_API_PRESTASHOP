@@ -38,6 +38,29 @@ export const TABLES_FICHIER3 = [
   'carrier',
 ];
 
+const ORDER_STATE_NAMES_FICHIER3 = [
+  { aliases: ['en attente du paiement par cheque'], prestaName: 'En attente du paiement par chèque' },
+  { aliases: ['paiement accepte'], prestaName: 'Paiement accepté' },
+  { aliases: ['en cours de preparation'], prestaName: 'En cours de préparation' },
+  { aliases: ['expedie'], prestaName: 'Expédié' },
+  { aliases: ['livre'], prestaName: 'Livré' },
+  { aliases: ['annule'], prestaName: 'Annulé' },
+  { aliases: ['rembourse'], prestaName: 'Remboursé' },
+  { aliases: ['erreur de paiement'], prestaName: 'Erreur de paiement' },
+  { aliases: ['en attente de reapprovisionnement paye'], prestaName: 'En attente de réapprovisionnement (payé)' },
+  { aliases: ['en attente de virement bancaire'], prestaName: 'En attente de virement bancaire' },
+  { aliases: ['paiement a distance accepte'], prestaName: 'Paiement à distance accepté' },
+  { aliases: ['en attente de reapprovisionnement non paye'], prestaName: 'En attente de réapprovisionnement (non payé)' },
+  {
+    aliases: ['en attente paiement a la livraison', 'en attente de paiement a la livraison'],
+    prestaName: 'En attente de paiement à la livraison',
+  },
+  { aliases: ['en attente de paiement'], prestaName: 'En attente de paiement' },
+  { aliases: ['remboursement partiel'], prestaName: 'Remboursement partiel' },
+  { aliases: ['paiement partiel'], prestaName: 'Paiement partiel' },
+  { aliases: ['autorisation a capturer par le marchand'], prestaName: 'Autorisation. A capturer par le marchand' },
+];
+
 const nettoyerTexte = (texte = '') =>
   String(texte)
     .replace(/&/g, '&amp;')
@@ -68,11 +91,6 @@ const enNombre = (valeur, defaut = 0) => {
 const asArray = (value) => {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
-};
-
-const lireCollectionAssociee = (noeud, nomAssociation, nomEntite) => {
-  const source = noeud?.associations?.[nomAssociation]?.[nomEntite];
-  return asArray(source);
 };
 
 const lireRessourceSimple = (donnees, nom) => {
@@ -362,6 +380,18 @@ const lireValeurAttribut = async (idValeur) => {
   return lireRessourceSimple(donnees, 'product_option_value');
 };
 
+const listerCombinaisonsProduit = async (idProduit) => {
+  if (!idProduit) return [];
+
+  const { donnees } = await requeteApi(
+    `combinations?filter[id_product]=[${idProduit}]&display=[id]&limit=200`
+  );
+
+  return lireCollectionRessource(donnees, 'combination')
+    .map((item) => enEntier(getValue(item?.id, 0), 0))
+    .filter(Boolean);
+};
+
 const trouverCombinaisonPourProduit = async (produit, variante, config) => {
   if (!produit) return 0;
   if (!variante) {
@@ -369,11 +399,7 @@ const trouverCombinaisonPourProduit = async (produit, variante, config) => {
   }
 
   const variantTarget = normaliserTexte(variante);
-  const productDetail = produit.donneesDetail ? lireRessourceSimple(produit.donneesDetail, 'product') : null;
-  const association = productDetail?.associations?.combinations?.combination;
-  const combinaisonIds = asArray(association)
-    .map((item) => enEntier(getValue(item?.id, 0), 0))
-    .filter(Boolean);
+  const combinaisonIds = await listerCombinaisonsProduit(produit.id);
 
   for (const idCombinaison of combinaisonIds) {
     const combination = await lireCombinaison(idCombinaison);
@@ -391,7 +417,7 @@ const trouverCombinaisonPourProduit = async (produit, variante, config) => {
     }
   }
 
-  return produit.idDefaultCombination || 0;
+  return 0;
 };
 
 const trouverPremierCarrierId = async () => {
@@ -405,6 +431,29 @@ const trouverEtatCommande = async (etat, config) => {
   const cible = normaliserTexte(etat);
   const { donnees } = await requeteApi('order_states?display=[id,name]&limit=100');
   const states = lireCollectionRessource(donnees, 'order_state');
+
+  const definitionEtat = ORDER_STATE_NAMES_FICHIER3.find((item) =>
+    item.aliases.some((alias) => normaliserTexte(alias) === cible)
+  );
+
+  if (definitionEtat) {
+    const correspondanceTableau = states.find((state) => {
+      const nom = getLangValue(state?.name, config.idLangue) || getValue(state?.name, '');
+      return normaliserTexte(nom) === normaliserTexte(definitionEtat.prestaName);
+    });
+
+    if (correspondanceTableau) {
+      return enEntier(getValue(correspondanceTableau?.id, 0), 0);
+    }
+  }
+
+  const correspondanceExacte = states.find((state) => {
+    const nom = normaliserTexte(getLangValue(state?.name, config.idLangue) || getValue(state?.name, ''));
+    return nom === cible;
+  });
+  if (correspondanceExacte) {
+    return enEntier(getValue(correspondanceExacte?.id, 0), 0);
+  }
 
   const tests = [];
   if (/accepte|accept|paiement accepte/.test(cible)) {
@@ -480,9 +529,9 @@ const creerCartApi = async (idClient, idAdresse, achats, config) => {
   return idCart;
 };
 
-const creerCommandeApi = async (idCart, idClient, idAdresse, idCarrier, etat, total, config) => {
+const creerCommandeApi = async (idCart, idClient, idAdresse, idCarrier, etat, total, config, idEtat = 0) => {
   const idCurrency = await trouverPremiereCurrencyId(config);
-  const payment = String(etat || 'Import fichier 3').trim() || 'Import fichier 3';
+  const payment = String(config.libellePaiement || 'Import fichier 3').trim() || 'Import fichier 3';
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop>
   <order>
@@ -493,7 +542,7 @@ const creerCommandeApi = async (idCart, idClient, idAdresse, idCarrier, etat, to
     <id_lang>${enEntier(config.idLangue, 1)}</id_lang>
     <id_customer>${idClient}</id_customer>
     <id_carrier>${idCarrier}</id_carrier>
-    <current_state>0</current_state>
+    <current_state>${enEntier(idEtat, 0)}</current_state>
     <payment>${nettoyerTexte(payment)}</payment>
     <module>${nettoyerTexte(config.modulePaiement)}</module>
     <recyclable>0</recyclable>
@@ -533,7 +582,7 @@ const creerCommandeApi = async (idCart, idClient, idAdresse, idCarrier, etat, to
 };
 
 const creerHistoriqueCommande = async (idOrder, idState) => {
-  if (!idState) return null;
+  if (!idOrder || !idState) return 0;
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop>
@@ -545,8 +594,45 @@ const creerHistoriqueCommande = async (idOrder, idState) => {
 </prestashop>`;
 
   const { donnees } = await requeteApi('order_histories', { methode: 'POST', xml });
-  const history = lireRessourceSimple(donnees, 'order_history');
-  return enEntier(getValue(history?.id, 0), 0);
+  const historique = lireRessourceSimple(donnees, 'order_history');
+  return enEntier(getValue(historique?.id, 0), 0);
+};
+
+const listerHistoriquesCommande = async (idOrder) => {
+  if (!idOrder) return [];
+
+  const { donnees } = await requeteApi(
+    `order_histories?filter[id_order]=[${idOrder}]&display=[id,id_order_state]&sort=[id_ASC]&limit=50`
+  );
+
+  return lireCollectionRessource(donnees, 'order_history')
+    .map((history) => ({
+      id: enEntier(getValue(history?.id, 0), 0),
+      idOrderState: enEntier(getValue(history?.id_order_state, 0), 0),
+    }))
+    .filter((history) => history.id > 0);
+};
+
+const supprimerHistoriqueCommande = async (idHistorique) => {
+  if (!idHistorique) return;
+  await requeteApi(`order_histories/${idHistorique}`, { methode: 'DELETE' });
+};
+
+const nettoyerHistoriquesCommande = async (idOrder, idEtat) => {
+  if (!idOrder || !idEtat) return;
+
+  const historiques = await listerHistoriquesCommande(idOrder);
+  if (!historiques.length) return;
+
+  const historiquesEtat = historiques.filter((history) => history.idOrderState === idEtat);
+  const historiqueConserve = historiquesEtat.length
+    ? historiquesEtat[historiquesEtat.length - 1]
+    : historiques[historiques.length - 1];
+
+  for (const history of historiques) {
+    if (history.id === historiqueConserve.id) continue;
+    await supprimerHistoriqueCommande(history.id);
+  }
 };
 
 export const lireApercuCsvFichier3 = (file, separateur = 'auto') =>
@@ -597,6 +683,9 @@ const calculerTotalCommande = async (achats, config) => {
     }
 
     const combinaisonId = await trouverCombinaisonPourProduit(produit, item.variante, config);
+    if (item.variante && !combinaisonId) {
+      throw new Error(`variante "${item.variante}" introuvable pour la reference "${item.reference}"`);
+    }
     let prixHt = produit.prixHt;
     if (combinaisonId) {
       const combinaison = await lireCombinaison(combinaisonId);
@@ -696,6 +785,19 @@ export const importerFichier3AvecApi = async (file, mapping, onProgress, options
         throw new Error('Aucun transporteur actif trouve');
       }
 
+      if (!cache.etats) {
+        cache.etats = new Map();
+      }
+
+      let idEtat = cache.etats.get(ligne.etat);
+      if (idEtat === undefined) {
+        idEtat = await trouverEtatCommande(ligne.etat, config);
+        cache.etats.set(ligne.etat, idEtat || 0);
+      }
+      if (!idEtat) {
+        throw new Error(`statut "${ligne.etat}" introuvable dans les etats de commande`);
+      }
+
       const cartItems = achats.map((item) => ({
         idProduit: item.idProduit,
         idCombination: item.idCombination,
@@ -711,27 +813,19 @@ export const importerFichier3AvecApi = async (file, mapping, onProgress, options
         idCarrier,
         ligne.etat,
         totalTtc,
-        config
+        config,
+        idEtat
       );
 
-      // 10) Appliquer l'etat commande si resolu.
-      if (!cache.etats) {
-        cache.etats = new Map();
+      const idHistoriqueEtat = await creerHistoriqueCommande(idOrder, idEtat);
+      if (!idHistoriqueEtat) {
+        throw new Error(`statut "${ligne.etat}" non applique a la commande ${idOrder}`);
       }
 
-      let idEtat = cache.etats.get(ligne.etat);
-      if (idEtat === undefined) {
-        idEtat = await trouverEtatCommande(ligne.etat, config);
-        cache.etats.set(ligne.etat, idEtat || 0);
-      }
-      if (idEtat) {
-        try {
-          await creerHistoriqueCommande(idOrder, idEtat);
-        } catch (erreurEtat) {
-          warnings.push(`Ligne ${done}: commande creee mais statut non applique (${erreurEtat.message})`);
-        }
-      } else {
-        warnings.push(`Ligne ${done}: statut "${ligne.etat}" non resolu, commande creee sans changement d'etat`);
+      try {
+        await nettoyerHistoriquesCommande(idOrder, idEtat);
+      } catch (erreurHistorique) {
+        warnings.push(`Ligne ${done}: commande creee mais nettoyage des statuts impossible (${erreurHistorique.message})`);
       }
 
       success += 1;

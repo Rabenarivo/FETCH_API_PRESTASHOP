@@ -523,6 +523,7 @@ const creerProduitApi = async (ligne, config, idCategorie, idGroupeTaxe, prixHt)
     <show_price>1</show_price>
     <visibility>both</visibility>
     <condition>new</condition>
+    <state>1</state>
     <name><language id="${config.idLangue}">${nettoyerTexte(nom)}</language></name>
     <link_rewrite><language id="${config.idLangue}">${slug(nom)}</language></link_rewrite>
     <description><language id="${config.idLangue}"></language></description>

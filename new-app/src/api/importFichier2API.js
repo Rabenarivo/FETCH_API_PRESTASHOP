@@ -21,7 +21,7 @@ if (process.env.NODE_ENV === 'production') {
 export const CONFIG_FICHIER2 = {
   idLangue: 1,
   idBoutique: 1,
-  idShopGroup: 1,
+  idShopGroup: 0,
   separateur: 'auto', // détection automatique , ou ;
   lignesAIgnorer: 1,  // 1 ligne d'en-tête
 };
@@ -670,33 +670,56 @@ const creerStockAvailableApi = async (idProduit, idDeclinaison, quantite, config
 const mettreAJourStockApi = async (idProduit, idDeclinaison, quantite, config) => {
   // id_product_attribute = 0 → stock du produit de base (sans déclinaison)
   const idAttr = idDeclinaison || 0;
+  const idShop = enEntier(config.idBoutique, 1);
+  const idShopGroup = enEntier(config.idShopGroup, 0);
 
   console.log('[fichier2] PUT stock_availables', {
     table: 'ps_stock_available',
     id_product: idProduit,
     id_product_attribute: idAttr,
+    id_shop: idShop,
+    id_shop_group: idShopGroup,
     quantity: quantite,
   });
 
-  // Étape 1 : trouver l'id du stock_available existant pour ce produit/déclinaison
+  // Étape 1 : trouver les lignes stock_available existantes pour ce produit/déclinaison.
+  // En multiboutique, plusieurs lignes peuvent coexister (id_shop=0 et id_shop=1).
   const { donnees } = await requeteApi(
-    `stock_availables?filter[id_product]=[${idProduit}]&filter[id_product_attribute]=[${idAttr}]&display=[id]`
+    `stock_availables?filter[id_product]=[${idProduit}]&filter[id_product_attribute]=[${idAttr}]&display=[id,id_shop,id_shop_group]`
   );
   const stocks = lireCollectionRessource(donnees, 'stock_available');
-  let idStock = 0;
+  let stocksCibles = [];
   if (stocks.length) {
-    idStock = enEntier(getNumber(stocks[0]?.id, 0), 0);
-  } else {
-    idStock = 0;
+    const lignesShopEtGroupe = stocks.filter((s) =>
+      enEntier(getNumber(s?.id_shop, 0), 0) === idShop
+      && enEntier(getNumber(s?.id_shop_group, 0), 0) === idShopGroup
+    );
+    const lignesMemeShop = stocks.filter(
+      (s) => enEntier(getNumber(s?.id_shop, 0), 0) === idShop
+    );
+    const lignesGlobales = stocks.filter(
+      (s) => enEntier(getNumber(s?.id_shop, 0), 0) === 0
+    );
+
+    if (lignesShopEtGroupe.length) {
+      stocksCibles = lignesShopEtGroupe;
+    } else if (lignesMemeShop.length) {
+      stocksCibles = lignesMemeShop;
+    } else if (lignesGlobales.length) {
+      stocksCibles = lignesGlobales;
+    } else {
+      stocksCibles = stocks;
+    }
   }
 
-  if (!idStock) {
+  if (!stocksCibles.length) {
     console.warn('[fichier2] stock_available introuvable, creation en cours', {
       id_product: idProduit,
       id_product_attribute: idAttr,
     });
     try {
-      idStock = await creerStockAvailableApi(idProduit, idDeclinaison, quantite, config);
+      const idStockCree = await creerStockAvailableApi(idProduit, idDeclinaison, quantite, config);
+      stocksCibles = [{ id: idStockCree, id_shop: idShop, id_shop_group: idShopGroup }];
     } catch (erreurCreation) {
       if (String(erreurCreation?.message || '').includes('Method POST is not allowed for the resource stock_availables')) {
         console.warn('[fichier2] creation stock_available non autorisee par le webservice, ligne ignoree');
@@ -704,24 +727,45 @@ const mettreAJourStockApi = async (idProduit, idDeclinaison, quantite, config) =
       }
       throw erreurCreation;
     }
-    return idStock;
   }
 
-  // Étape 2 : mettre à jour la quantité via PUT
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+  // Étape 2 : mettre à jour toutes les lignes cibles via PUT.
+  // Cela évite un décalage BO/FO quand plusieurs lignes existent pour un même couple produit/déclinaison.
+  for (const stock of stocksCibles) {
+    const idStock = enEntier(getNumber(stock?.id, 0), 0);
+    if (!idStock) {
+      continue;
+    }
+    const rowShop = enEntier(getNumber(stock?.id_shop, idShop), idShop);
+    const rowShopGroup = enEntier(getNumber(stock?.id_shop_group, idShopGroup), idShopGroup);
+
+    const { donnees: donneesStock } = await requeteApi(
+      `stock_availables/${idStock}?display=[id,id_product,id_product_attribute,id_shop,id_shop_group,depends_on_stock,out_of_stock,location]`
+    );
+    const stockComplet = lireRessourceSimple(donneesStock, 'stock_available');
+    const dependsOnStock = enEntier(getNumber(stockComplet?.depends_on_stock, 0), 0);
+    const outOfStock = enEntier(getNumber(stockComplet?.out_of_stock, 2), 2);
+    const location = nettoyerTexte(String(getValue(stockComplet?.location, '') || ''));
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop>
   <stock_available>
     <id>${idStock}</id>
     <id_product>${idProduit}</id_product>
     <id_product_attribute>${idAttr}</id_product_attribute>
+    <id_shop>${rowShop}</id_shop>
+    <id_shop_group>${rowShopGroup}</id_shop_group>
     <quantity>${enEntier(quantite, 0)}</quantity>
-    <depends_on_stock>0</depends_on_stock>
-    <out_of_stock>2</out_of_stock>
+    <depends_on_stock>${dependsOnStock}</depends_on_stock>
+    <out_of_stock>${outOfStock}</out_of_stock>
+    <location>${location}</location>
   </stock_available>
 </prestashop>`;
 
-  await requeteApi(`stock_availables/${idStock}`, { methode: 'PUT', xml });
-  return idStock;
+    await requeteApi(`stock_availables/${idStock}`, { methode: 'PUT', xml });
+  }
+
+  return enEntier(getNumber(stocksCibles[0]?.id, 0), 0);
 };
 
 // ─── Lecture aperçu CSV (export) ──────────────────────────────────────────────
