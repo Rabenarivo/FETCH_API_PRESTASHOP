@@ -1,3 +1,15 @@
+/**
+ * commandeAPI.js
+ *
+ * API des commandes PrestaShop:
+ * - lecture des commandes
+ * - lecture des etats
+ * - changement d'etat
+ *
+ * Notes debutant:
+ * - Le code gere plusieurs URLs API (fallback) pour eviter les erreurs reseau en dev.
+ */
+
 import {
   parsePrestaXML,
   getCollection,
@@ -16,6 +28,7 @@ const URLS_API =
 const BASES_API = URLS_API.filter(Boolean);
 
 async function requeteApi(chemin, options = {}) {
+  // Essaie chaque base API jusqu'a obtenir une reponse valide.
   let derniereErreur = null;
 
   for (const base of BASES_API) {
@@ -26,11 +39,16 @@ async function requeteApi(chemin, options = {}) {
         headers: { 'Content-Type': 'application/xml', ...(options.headers || {}) },
       });
       const texte = await reponse.text();
-      const donnees = parsePrestaXML(texte);
+      const texteNettoye = String(texte || '').trim();
+      // Certaines erreurs 500 renvoient du HTML (ou vide), on evite le parsing XML dans ce cas.
+      const donnees = texteNettoye.startsWith('<') ? parsePrestaXML(texteNettoye) : { prestashop: {} };
 
       if (!reponse.ok) {
         const messageApi = hasError(donnees) ? getErrorMessage(donnees) : '';
-        throw new Error(`HTTP ${reponse.status} /${chemin}${messageApi ? ` - ${messageApi}` : ''}`);
+        const extrait = !messageApi && texteNettoye
+          ? ` - ${texteNettoye.replace(/\s+/g, ' ').slice(0, 160)}`
+          : '';
+        throw new Error(`HTTP ${reponse.status} /${chemin}${messageApi ? ` - ${messageApi}` : extrait}`);
       }
 
       if (hasError(donnees)) {
@@ -51,6 +69,8 @@ async function requeteApi(chemin, options = {}) {
 }
 
 const lireCollectionRessource = (donnees, nom) => {
+  // PrestaShop peut renvoyer les listes sous plusieurs formats.
+  // Cette fonction harmonise le resultat en tableau.
   const direct = getCollection(donnees, nom);
   if (direct.length) return direct;
 
@@ -248,9 +268,8 @@ async function reinjecterStockCommande(idCommande) {
  * @returns {Promise<void>}
  */
 export async function changerEtatCommande(idCommande, idEtat) {
-  if (String(idEtat) === '19') {
-    return;
-  }
+  const etatCible = String(idEtat);
+  const ignorerHistorique = etatCible === '19';
 
   const dateNow = new Date().toISOString().replace('T', ' ').slice(0, 19);
   const commandeActuelle = await obtenirCommande(idCommande);
@@ -267,16 +286,21 @@ export async function changerEtatCommande(idCommande, idEtat) {
   </order_history>
 </prestashop>`;
 
-  const resHistory = await requeteApi('order_histories', {
-    method: 'POST',
-    body: xmlHistory,
-  });
-
-  if (!resHistory.reponse.ok) {
-    const msg = hasError(resHistory.donnees)
-      ? getErrorMessage(resHistory.donnees)
-      : resHistory.texte.slice(0, 200);
-    throw new Error(`Erreur création historique (${resHistory.reponse.status}): ${msg}`);
+  if (!ignorerHistorique) {
+    try {
+      await requeteApi('order_histories', {
+        method: 'POST',
+        body: xmlHistory,
+      });
+    } catch (erreur) {
+      const message = String(erreur?.message || '');
+      const estErreur500Historique = /HTTP\s+500\s+\/order_histories/i.test(message);
+      if (!estErreur500Historique) {
+        throw erreur;
+      }
+      // Fallback: certains serveurs renvoient 500 sur order_histories.
+      // On poursuit avec la mise à jour directe de current_state via PUT orders/{id}.
+    }
   }
 
   // ── Étape 2 : GET commande complète → modifier current_state → PUT
