@@ -1,3 +1,10 @@
+/**
+ * importFichier1API.js
+ *
+ * Import du fichier 1 (produits/categories/taxes).
+ * Le fichier est volontairement detaille car il couvre plusieurs etapes metier.
+ */
+
 import {
   parsePrestaXML,
   getCollection,
@@ -6,6 +13,11 @@ import {
   getLangValue,
   hasError,
 } from '../config/parserXML';
+import {
+  validerColonnesObligatoires,
+  validerDateDdMmYyyy,
+  validerMontantPositif,
+} from './exceptionAPI';
 
 let URL_API = '/evals/api';
 if (process.env.NODE_ENV === 'production') {
@@ -551,6 +563,21 @@ export const importerFichier1AvecApi = async (file, mapping, onProgress, options
   const config = { ...CONFIG_FICHIER1, ...options };
   const { headers, rows, separateur } = await lireApercuCsv(file, config.separateur, 0);
 
+  validerColonnesObligatoires({
+    mapping,
+    requiredFields: ['date_produit', 'nom', 'reference', 'prix_ttc', 'taxe', 'categorie', 'prix_achat'],
+    labelByField: {
+      date_produit: 'date_produit',
+      nom: 'nom',
+      reference: 'reference',
+      prix_ttc: 'prix_ttc',
+      taxe: 'taxe',
+      categorie: 'categorie',
+      prix_achat: 'prix_achat',
+    },
+    fichier: 'fichier1',
+  });
+
   // 2) Initialiser les caches pour eviter les requetes API repetitives.
   const cache = {
     categories: new Map(),
@@ -594,6 +621,9 @@ export const importerFichier1AvecApi = async (file, mapping, onProgress, options
       if (!ligne.nom) throw new Error('Nom manquant');
       if (!ligne.categorie) throw new Error('Categorie manquante');
       if (ligne.prix_ttc === '' || ligne.prix_ttc === undefined) throw new Error('Prix TTC manquant');
+      validerDateDdMmYyyy(ligne.date_produit, { champ: 'date_produit', ligne: numeroLigne, obligatoire: true });
+      validerMontantPositif(ligne.prix_ttc, { champ: 'prix_ttc', ligne: numeroLigne, obligatoire: true });
+      validerMontantPositif(ligne.prix_achat, { champ: 'prix_achat', ligne: numeroLigne, obligatoire: true });
 
       // 5) Categorie (recherche puis creation si necessaire).
       notifier('categorie');

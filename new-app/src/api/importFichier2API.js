@@ -1,3 +1,9 @@
+/**
+ * importFichier2API.js
+ *
+ * Import du fichier 2 (declinaisons, attributs et stock).
+ */
+
 import {
   parsePrestaXML,
   getCollection,
@@ -7,6 +13,10 @@ import {
   getLangValue,
   hasError,
 } from '../config/parserXML';
+import {
+  validerColonnesObligatoires,
+  validerMontantPositif,
+} from './exceptionAPI';
 
 // URL de base de l'API PrestaShop (proxy local en dev)
 let URL_API = '/evals/api';
@@ -780,6 +790,19 @@ export const importerFichier2AvecApi = async (file, mapping, onProgress, options
   const config = { ...CONFIG_FICHIER2, ...options };
   const { headers, rows, separateur } = await lireApercuCsv(file, config.separateur, 0);
 
+  validerColonnesObligatoires({
+    mapping,
+    requiredFields: ['reference', 'specificite', 'karazany', 'stock_initial', 'prix_vente_ttc'],
+    labelByField: {
+      reference: 'reference',
+      specificite: 'specificite',
+      karazany: 'karazany',
+      stock_initial: 'stock_initial',
+      prix_vente_ttc: 'prix_vente_ttc',
+    },
+    fichier: 'fichier2',
+  });
+
   // 2) Initialiser les caches pour eviter les appels API redondants.
   const cache = {
     groupesAttributs: new Map(),  // nom normalisé → id_attribute_group
@@ -832,6 +855,14 @@ export const importerFichier2AvecApi = async (file, mapping, onProgress, options
 
     try {
       notifier(`Ligne ${done}/${total}: traitement reference ${reference}`);
+
+      if (prix_vente_ttc !== '' && prix_vente_ttc !== undefined) {
+        validerMontantPositif(prix_vente_ttc, {
+          champ: 'prix_vente_ttc',
+          ligne: done,
+          obligatoire: false,
+        });
+      }
 
       // 5) Rechercher le produit par reference.
       let produitInfo = cache.produits.get(reference);

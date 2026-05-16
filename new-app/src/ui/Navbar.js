@@ -5,13 +5,7 @@ function Navbar({ currentPage, setCurrentPage }) {
   return (
     <nav className="navbar">
       <div className="navbar-container">
-        <button
-          className="navbar-logo-btn"
-          onClick={() => setCurrentPage('products')}
-          type="button"
-        >
-          Prestashop
-        </button>
+
         <ul className="nav-menu">
           <li className="nav-item">
             <button 
@@ -23,26 +17,10 @@ function Navbar({ currentPage, setCurrentPage }) {
           </li>
           <li className="nav-item">
             <button 
-              className={`nav-link ${currentPage === 'products' ? 'active' : ''}`}
-              onClick={() => setCurrentPage('products')}
-            >
-              Produits
-            </button>
-          </li>
-          <li className="nav-item">
-            <button 
               className={`nav-link ${currentPage === 'import' ? 'active' : ''}`}
               onClick={() => setCurrentPage('import')}
             >
               Import
-            </button>
-          </li>
-          <li className="nav-item">
-            <button 
-              className={`nav-link ${currentPage === 'categories' ? 'active' : ''}`}
-              onClick={() => setCurrentPage('categories')}
-            >
-              Categories
             </button>
           </li>
           <li className="nav-item">

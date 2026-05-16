@@ -1,3 +1,10 @@
+/**
+ * categoriesApi.js
+ *
+ * API simple pour lire les categories PrestaShop.
+ * Objectif: code lisible pour debutant.
+ */
+
 import {
   parsePrestaXML,
   getCollection,
@@ -6,6 +13,7 @@ import {
 } from '../config/parserXML';
 
 export async function getCategories() {
+  // 1) Appel API
   const response = await fetch('/evals/api/categories?display=[id,name]', {
     method: 'GET',
     credentials: 'include',
@@ -15,6 +23,7 @@ export async function getCategories() {
     throw new Error('Erreur lors du chargement des catégories');
   }
 
+  // 2) Conversion XML -> objet JS
   const xmlText = await response.text();
   const data = parsePrestaXML(xmlText);
 
@@ -31,6 +40,7 @@ export async function getCategories() {
         ? [categoriesFromContainer]
         : [];
 
+  // 3) On retourne seulement les infos utiles a l'interface
   return categories.map((category) => ({
     id: getValue(category.id),
     name: getLangValue(category.name, 1) || `Categorie #${getValue(category.id, '')}`,

@@ -18,7 +18,12 @@ import {
 import './Import.css';
 import './ImportMultiple.css';
 
-const IMPORTS = [
+// ---------------------------------------------------------
+// Chaque entrée décrit un des 3 fichiers à importer.
+// "config" = paramètres d'import, "importer" = la fonction
+// qui envoie les données à PrestaShop.
+// ---------------------------------------------------------
+const LISTE_IMPORTS = [
   {
     label: 'Fichier 1',
     config: CONFIG_FICHIER1,
@@ -39,136 +44,112 @@ const IMPORTS = [
   },
 ];
 
-const etatVide = () => ({
-  file: null,
-  headers: [],
-  mapping: [],
-  separateur: '',
-  error: '',
-});
-
-const detecterSeparateur = (contenu) => {
-  const premiereLigne = String(contenu || '').replace(/^\uFEFF/, '').split(/\r?\n/)[0] || '';
+// ---------------------------------------------------------
+// Trouve le bon séparateur d'un fichier CSV (, ou ;)
+// en comptant lequel apparaît le plus dans la 1ère ligne.
+// ---------------------------------------------------------
+function detecterSeparateur(contenu) {
+  // On enlève le BOM (caractère invisible en début de fichier UTF-8)
+  const premiereLigne = contenu.replace(/^\uFEFF/, '').split(/\r?\n/)[0] || '';
   const nbVirgules = (premiereLigne.match(/,/g) || []).length;
   const nbPointVirgules = (premiereLigne.match(/;/g) || []).length;
   return nbVirgules >= nbPointVirgules ? ',' : ';';
-};
+}
 
-const parserCsvSimple = (contenu, separateur = ';') => {
-  const lignes = String(contenu || '')
-    .replace(/^\uFEFF/, '')
-    .split(/\r?\n/)
-    .map((ligne) => ligne.trim())
-    .filter(Boolean);
+// ---------------------------------------------------------
+// Lit la première ligne d'un CSV pour récupérer les en-têtes
+// (noms des colonnes). Essaie , puis ; si besoin.
+// ---------------------------------------------------------
+function lireEnTetesCsv(contenu) {
+  const separateur = detecterSeparateur(contenu);
+  const premiereLigne = contenu.replace(/^\uFEFF/, '').split(/\r?\n/).find((l) => l.trim());
 
-  if (!lignes.length) return { headers: [] };
+  if (!premiereLigne) return { headers: [], separateur };
 
-  const parseLine = (ligne) => {
-    const cellules = [];
-    let current = '';
-    let insideQuotes = false;
+  // Découpe la ligne selon le séparateur trouvé
+  const headers = premiereLigne.split(separateur).map((h) => h.replace(/"/g, '').trim());
+  return { headers, separateur };
+}
 
-    for (let i = 0; i < ligne.length; i += 1) {
-      const char = ligne[i];
-      const next = ligne[i + 1];
-
-      if (char === '"' && next === '"' && insideQuotes) {
-        current += '"';
-        i += 1;
-        continue;
-      }
-
-      if (char === '"') {
-        insideQuotes = !insideQuotes;
-        continue;
-      }
-
-      if (char === separateur && !insideQuotes) {
-        cellules.push(current.trim());
-        current = '';
-        continue;
-      }
-
-      current += char;
-    }
-
-    cellules.push(current.trim());
-    return cellules;
-  };
-
-  return { headers: parseLine(lignes[0]) };
-};
-
-const parserAvecEssais = (contenu) => {
-  const separateurDetecte = detecterSeparateur(contenu);
-  const essais = [separateurDetecte, separateurDetecte === ',' ? ';' : ','];
-
-  for (const separateur of essais) {
-    const parsed = parserCsvSimple(contenu, separateur);
-    if (parsed.headers.length > 1) {
-      return { headers: parsed.headers, separateur };
-    }
+// ---------------------------------------------------------
+// Trie les fichiers sélectionnés pour que :
+//   - fichier1 soit en position 0
+//   - fichier2 soit en position 1
+//   - fichier3 soit en position 2
+// (peu importe l'ordre de sélection dans l'explorateur)
+// ---------------------------------------------------------
+function trierFichiersParNumero(listeFichiers) {
+  // Cherche le fichier dont le nom contient "fichierN"
+  function trouverFichier(numero) {
+    const regex = new RegExp(`fichier.?${numero}`, 'i');
+    return listeFichiers.find((f) => regex.test(f.name)) || null;
   }
 
-  return { headers: [], separateur: separateurDetecte };
-};
+  const f1 = trouverFichier(1);
+  const f2 = trouverFichier(2);
+  const f3 = trouverFichier(3);
 
-const ordonnerFichiersSelectionnes = (listeFichiers) => {
-  const copie = [...listeFichiers];
-  const dejaPris = new Set();
+  // Si un fichier n'est pas trouvé par son nom, on le laisse à null
+  return [f1, f2, f3];
+}
 
-  const prendreParNumero = (numero) => {
-    const regex = new RegExp(`fichier\\s*${numero}|fichier${numero}`, 'i');
-    const idx = copie.findIndex((fichier, i) => !dejaPris.has(i) && regex.test(fichier.name || ''));
-    if (idx >= 0) {
-      dejaPris.add(idx);
-      return copie[idx];
-    }
-    return null;
-  };
-
-  const tries = [prendreParNumero(1), prendreParNumero(2), prendreParNumero(3)];
-  const restants = copie.filter((_, i) => !dejaPris.has(i));
-
-  return tries.map((fichier) => fichier || restants.shift() || null);
-};
-
+// ---------------------------------------------------------
+// Composant principal
+// ---------------------------------------------------------
 function ImportMultiple() {
-  const [fichiers, setFichiers] = useState([etatVide(), etatVide(), etatVide()]);
-  const [importEnCours, setImportEnCours] = useState(false);
-  const [logs, setLogs] = useState([]);
-  const [erreurs, setErreurs] = useState([]);
+  // "fichiersInfo" stocke, pour chacun des 3 fichiers :
+  // le File, les en-têtes CSV, le mapping colonnes, le séparateur, et une erreur éventuelle
+  const [fichiersInfo, setFichiersInfo] = useState([
+    { file: null, headers: [], mapping: [], separateur: '', erreur: '' },
+    { file: null, headers: [], mapping: [], separateur: '', erreur: '' },
+    { file: null, headers: [], mapping: [], separateur: '', erreur: '' },
+  ]);
 
-  const handleFilesChange = async (event) => {
-    const selection = ordonnerFichiersSelectionnes(Array.from(event.target.files || []).slice(0, 3));
+  const [importEnCours, setImportEnCours] = useState(false);
+  const [logs, setLogs] = useState([]);       // messages de suivi
+  const [erreurs, setErreurs] = useState([]); // messages d'erreur
+
+  // -------------------------------------------------------
+  // Appelée quand l'utilisateur choisit des fichiers.
+  // On lit les en-têtes de chaque fichier CSV.
+  // -------------------------------------------------------
+  async function handleFilesChange(event) {
+    const selection = trierFichiersParNumero(Array.from(event.target.files || []).slice(0, 3));
     setLogs([]);
     setErreurs([]);
 
-    const next = await Promise.all(
-      IMPORTS.map(async (definition, index) => {
+    // On lit les en-têtes de chaque fichier en parallèle
+    const nouveauxInfos = await Promise.all(
+      LISTE_IMPORTS.map(async (importDef, index) => {
         const file = selection[index];
-        if (!file) return etatVide();
+
+        // Pas de fichier pour cette position → on remet à vide
+        if (!file) {
+          return { file: null, headers: [], mapping: [], separateur: '', erreur: '' };
+        }
 
         try {
+          // Le fichier 3 a sa propre fonction de lecture (format spécial)
           if (index === 2) {
-            const { headers, separateur } = await lireApercuCsvFichier3(file, definition.config.separateur);
+            const { headers, separateur } = await lireApercuCsvFichier3(file, importDef.config.separateur);
             return {
               file,
               headers,
-              mapping: definition.detecterMapping(headers),
+              mapping: importDef.detecterMapping(headers),
               separateur,
-              error: headers.length > 1 ? '' : 'CSV vide ou illisible',
+              erreur: headers.length > 1 ? '' : 'CSV vide ou illisible',
             };
           }
 
+          // Fichiers 1 et 2 : lecture standard
           const contenu = await file.text();
-          const parsed = parserAvecEssais(contenu);
+          const { headers, separateur } = lireEnTetesCsv(contenu);
           return {
             file,
-            headers: parsed.headers,
-            mapping: definition.detecterMapping(parsed.headers),
-            separateur: parsed.separateur,
-            error: parsed.headers.length > 1 ? '' : 'CSV vide ou illisible',
+            headers,
+            mapping: importDef.detecterMapping(headers),
+            separateur,
+            erreur: headers.length > 1 ? '' : 'CSV vide ou illisible',
           };
         } catch (e) {
           return {
@@ -176,118 +157,164 @@ function ImportMultiple() {
             headers: [],
             mapping: [],
             separateur: '',
-            error: e.message || 'Impossible de lire le fichier',
+            erreur: e.message || 'Impossible de lire le fichier',
           };
         }
       })
     );
 
-    setFichiers(next);
-  };
+    setFichiersInfo(nouveauxInfos);
+  }
 
-  const importerTout = async () => {
-    const erreursLocales = [];
-    const logsLocaux = [];
+  // -------------------------------------------------------
+  // Lance l'import d'UN seul fichier et met à jour les logs.
+  // -------------------------------------------------------
+  async function importerUnFichier(importDef, infoFichier, logsEnCours) {
+    // Affiche "import en cours..." pour ce fichier
+    logsEnCours.push(`${importDef.label} : import en cours...`);
+    setLogs([...logsEnCours]);
 
-    if (fichiers.some((f) => !f.file)) {
-      setErreurs(['Selectionne les 3 fichiers pour importer.']);
+    // Lance l'import et attend la fin
+    const resultat = await importDef.importer(
+      infoFichier.file,
+      infoFichier.mapping,
+      // Cette fonction est appelée à chaque ligne importée (progression)
+      function onProgression({ done, total, status }) {
+        const message = `${importDef.label} : ${done}/${total}${status ? ` — ${status}` : ''}`;
+        // On retire l'ancienne ligne de progression et on met la nouvelle
+        const sansAncien = logsEnCours.filter((l) => !l.startsWith(`${importDef.label} :`));
+        sansAncien.push(message);
+        setLogs([...sansAncien]);
+      },
+      // On force la détection automatique du séparateur CSV
+      { ...importDef.config, separateur: 'auto' }
+    );
+
+    // Affiche le résumé une fois l'import terminé
+    logsEnCours.push(
+      `${importDef.label} : terminé` +
+      ` (${resultat.successCount || 0} importées,` +
+      ` ${resultat.ignoredCount || 0} ignorées,` +
+      ` ${resultat.doneCount || 0} traitées)`
+    );
+    setLogs([...logsEnCours]);
+  }
+
+  // -------------------------------------------------------
+  // Lance l'import des 3 fichiers dans l'ordre 1 → 2 → 3.
+  // S'arrête dès qu'une erreur survient.
+  // -------------------------------------------------------
+  async function importerTout() {
+    // Étape 1 : vérifie que les 3 fichiers sont bien sélectionnés
+    if (fichiersInfo.some((f) => !f.file)) {
+      setErreurs(['Sélectionne les 3 fichiers avant de lancer l\'import.']);
       return;
     }
 
+    // Étape 2 : on démarre, on vide les anciens messages
     setImportEnCours(true);
     setErreurs([]);
     setLogs([]);
 
-    try {
-      for (let index = 0; index < IMPORTS.length; index += 1) {
-        const definition = IMPORTS[index];
-        const fichier = fichiers[index];
+    const logsEnCours = [];
 
-        if (fichier.error) {
-          throw new Error(`${definition.label}: ${fichier.error}`);
+    try {
+      // Étape 3 : on importe chaque fichier l'un après l'autre
+      for (let i = 0; i < LISTE_IMPORTS.length; i++) {
+        const importDef = LISTE_IMPORTS[i];
+        const infoFichier = fichiersInfo[i];
+
+        // Si le fichier a une erreur de lecture, on s'arrête tout de suite
+        if (infoFichier.erreur) {
+          throw new Error(`${importDef.label} : ${infoFichier.erreur}`);
         }
 
-        logsLocaux.push(`${definition.label}: import en cours...`);
-        setLogs([...logsLocaux]);
-
-        // Ordre strict: 1 puis 2 puis 3.
-        // eslint-disable-next-line no-await-in-loop
-        const result = await definition.importer(
-          fichier.file,
-          fichier.mapping,
-          ({ done, total, status }) => {
-            const texte = `${definition.label}: ${done}/${total}${status ? ` - ${status}` : ''}`;
-            const sansDoublon = logsLocaux.filter((ligne) => !ligne.startsWith(`${definition.label}:`));
-            sansDoublon.push(texte);
-            setLogs([...sansDoublon]);
-          },
-          { ...definition.config, separateur: 'auto' }
-        );
-
-        logsLocaux.push(
-          `${definition.label}: termine (${result.successCount || 0} importees, ${result.ignoredCount || 0} ignorees, ${result.doneCount || 0} traitees)`
-        );
-        setLogs([...logsLocaux]);
+        // Import du fichier numéro i+1
+        await importerUnFichier(importDef, infoFichier, logsEnCours);
       }
     } catch (e) {
-      erreursLocales.push(e.message || 'Erreur import');
-      if (Array.isArray(e.details) && e.details.length) {
-        erreursLocales.push(...e.details);
+      // Étape 4 : en cas d'erreur, on affiche le message
+      const messages = [e.message || 'Erreur lors de l\'import'];
+      if (Array.isArray(e.details)) {
+        messages.push(...e.details);
       }
+      setErreurs(messages);
     } finally {
+      // Étape 5 : dans tous les cas, on remet le bouton actif
       setImportEnCours(false);
-      setErreurs(erreursLocales);
     }
-  };
+  }
 
+  // -------------------------------------------------------
+  // Rendu : interface utilisateur
+  // -------------------------------------------------------
   return (
     <div className="import-multiple-container">
+
+      {/* Titre + actions */}
       <div className="import-multiple-header">
         <div>
           <p className="import-multiple-kicker">Import groupe</p>
           <h2>Import multiple</h2>
-          <p className="import-multiple-subtitle">Un seul bouton pour lancer les imports dans l ordre: 1, 2, puis 3.</p>
+          <p className="import-multiple-subtitle">
+            Un seul bouton pour lancer les imports dans l'ordre : 1, 2, puis 3.
+          </p>
         </div>
 
         <div className="import-multiple-actions">
-          <input type="file" accept=".csv" multiple onChange={handleFilesChange} className="form-input import-input-multiple" />
-          <button type="button" className="import-btn import-all-btn" onClick={importerTout} disabled={importEnCours}>
+          <input
+            type="file"
+            accept=".csv"
+            multiple
+            onChange={handleFilesChange}
+            className="form-input import-input-multiple"
+          />
+          <button
+            type="button"
+            className="import-btn import-all-btn"
+            onClick={importerTout}
+            disabled={importEnCours}
+          >
             {importEnCours ? 'Import en cours...' : 'Importer les 3 fichiers'}
           </button>
         </div>
       </div>
 
+      {/* Liste des fichiers détectés */}
       <div className="import-order-list">
-        {IMPORTS.map((definition, index) => (
-          <div key={definition.label} className="import-order-item">
-            <strong>{index + 1}. {definition.label}</strong>
-            <span>{fichiers[index].file ? fichiers[index].file.name : 'Aucun fichier'}</span>
-            <span>Separateur: {fichiers[index].separateur || 'auto'}</span>
+        {LISTE_IMPORTS.map((importDef, index) => (
+          <div key={importDef.label} className="import-order-item">
+            <strong>{index + 1}. {importDef.label}</strong>
+            <span>{fichiersInfo[index].file ? fichiersInfo[index].file.name : 'Aucun fichier'}</span>
+            <span>Séparateur : {fichiersInfo[index].separateur || 'auto'}</span>
           </div>
         ))}
       </div>
 
+      {/* Messages de suivi */}
       {logs.length > 0 && (
         <div className="message success-message">
           <strong>Suivi import :</strong>
           <ul>
             {logs.map((ligne, index) => (
-              <li key={`${ligne}-${index}`}>{ligne}</li>
+              <li key={index}>{ligne}</li>
             ))}
           </ul>
         </div>
       )}
 
+      {/* Messages d'erreur */}
       {erreurs.length > 0 && (
         <div className="message error-message">
           <strong>Erreurs :</strong>
           <ul>
             {erreurs.map((erreur, index) => (
-              <li key={`${erreur}-${index}`}>{erreur}</li>
+              <li key={index}>{erreur}</li>
             ))}
           </ul>
         </div>
       )}
+
     </div>
   );
 }

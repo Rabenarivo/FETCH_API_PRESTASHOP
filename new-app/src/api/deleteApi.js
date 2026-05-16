@@ -1,3 +1,11 @@
+/**
+ * deleteApi.js
+ *
+ * API de reinitialisation partielle:
+ * - supprime les donnees par groupes (catalogue, commandes, clients...)
+ * - applique un ordre de suppression pour respecter les dependances.
+ */
+
 import { parsePrestaXML, getCollection, getValue } from '../config/parserXML';
 
 const API_URL =

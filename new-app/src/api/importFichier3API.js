@@ -1,3 +1,9 @@
+/**
+ * importFichier3API.js
+ *
+ * Import du fichier 3 (clients/commandes/paniers selon le mapping configure).
+ */
+
 import {
   parsePrestaXML,
   getCollection,
@@ -6,6 +12,11 @@ import {
   getLangValue,
   hasError,
 } from '../config/parserXML';
+import {
+  validerColonnesObligatoires,
+  validerDateDdMmYyyy,
+  validerMontantPositif,
+} from './exceptionAPI';
 
 const URL_API =
   process.env.NODE_ENV === 'production'
@@ -455,24 +466,6 @@ const trouverEtatCommande = async (etat, config) => {
     return enEntier(getValue(correspondanceExacte?.id, 0), 0);
   }
 
-  const tests = [];
-  if (/accepte|accept|paiement accepte/.test(cible)) {
-    tests.push(/paiement accepte|payment accepted|payment accept|ws payment/);
-  }
-  if (/attente.*livraison|livraison/.test(cible)) {
-    tests.push(/livraison|delivery|cash on delivery|en attente/);
-  }
-  if (/erreur|failed|refuse/.test(cible)) {
-    tests.push(/erreur|error|payment error|canceled|cancelled/);
-  }
-
-  for (const state of states) {
-    const nom = normaliserTexte(getLangValue(state?.name, config.idLangue) || getValue(state?.name, ''));
-    if (tests.some((regexp) => regexp.test(nom))) {
-      return enEntier(getValue(state?.id, 0), 0);
-    }
-  }
-
   return 0;
 };
 
@@ -529,9 +522,22 @@ const creerCartApi = async (idClient, idAdresse, achats, config) => {
   return idCart;
 };
 
-const creerCommandeApi = async (idCart, idClient, idAdresse, idCarrier, etat, total, config, idEtat = 0) => {
+const creerCommandeApi = async (
+  idCart,
+  idClient,
+  idAdresse,
+  idCarrier,
+  etat,
+  total,
+  config,
+  idEtat = 0,
+  doitAvoirPaiement = false
+) => {
   const idCurrency = await trouverPremiereCurrencyId(config);
+  // PrestaShop Webservice exige un champ payment non vide a la creation de commande.
   const payment = String(config.libellePaiement || 'Import fichier 3').trim() || 'Import fichier 3';
+  const modulePaiement = String(config.modulePaiement || 'ps_wirepayment').trim() || 'ps_wirepayment';
+  const totalPaidReal = doitAvoirPaiement ? total : 0;
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop>
   <order>
@@ -544,7 +550,7 @@ const creerCommandeApi = async (idCart, idClient, idAdresse, idCarrier, etat, to
     <id_carrier>${idCarrier}</id_carrier>
     <current_state>${enEntier(idEtat, 0)}</current_state>
     <payment>${nettoyerTexte(payment)}</payment>
-    <module>${nettoyerTexte(config.modulePaiement)}</module>
+    <module>${nettoyerTexte(modulePaiement)}</module>
     <recyclable>0</recyclable>
     <gift>0</gift>
     <gift_message></gift_message>
@@ -555,7 +561,7 @@ const creerCommandeApi = async (idCart, idClient, idAdresse, idCarrier, etat, to
     <total_paid>${total.toFixed(6)}</total_paid>
     <total_paid_tax_incl>${total.toFixed(6)}</total_paid_tax_incl>
     <total_paid_tax_excl>${total.toFixed(6)}</total_paid_tax_excl>
-    <total_paid_real>${total.toFixed(6)}</total_paid_real>
+    <total_paid_real>${totalPaidReal.toFixed(6)}</total_paid_real>
     <total_products>${total.toFixed(6)}</total_products>
     <total_products_wt>${total.toFixed(6)}</total_products_wt>
     <total_shipping>0</total_shipping>
@@ -579,6 +585,20 @@ const creerCommandeApi = async (idCart, idClient, idAdresse, idCarrier, etat, to
   const idOrder = enEntier(getValue(order?.id, 0), 0);
   if (!idOrder) throw new Error('Impossible de recuperer id_order apres creation');
   return idOrder;
+};
+
+const forcerEtatCommande = async (idOrder, idState) => {
+  if (!idOrder || !idState) return;
+
+  const { texte } = await requeteApi(`orders/${idOrder}?display=full`);
+  let xmlOrder = String(texte || '');
+  xmlOrder = xmlOrder.replace(
+    /<current_state>([^<]*)<\/current_state>/,
+    `<current_state>${enEntier(idState, 0)}</current_state>`
+  );
+  xmlOrder = xmlOrder.replace(/ xlink:href="[^"]*"/g, '');
+
+  await requeteApi(`orders/${idOrder}`, { methode: 'PUT', xml: xmlOrder });
 };
 
 const creerHistoriqueCommande = async (idOrder, idState) => {
@@ -616,6 +636,97 @@ const listerHistoriquesCommande = async (idOrder) => {
 const supprimerHistoriqueCommande = async (idHistorique) => {
   if (!idHistorique) return;
   await requeteApi(`order_histories/${idHistorique}`, { methode: 'DELETE' });
+};
+
+// ────────────────────────────────────────────────────────────
+// Paiement (ps_order_payment)
+// ────────────────────────────────────────────────────────────
+
+const obtenirReferenceCommande = async (idOrder) => {
+  const { donnees } = await requeteApi(`orders/${idOrder}?display=[id,reference]`);
+  const order = lireRessourceSimple(donnees, 'order');
+  return String(getValue(order?.reference, '') || '').trim();
+};
+
+const creerPaiementCommande = async (referenceCommande, montant, config, dateCommande) => {
+  if (!referenceCommande) throw new Error('Reference commande manquante pour le paiement');
+
+  const idCurrency = await trouverPremiereCurrencyId(config);
+  const methodePaiement = String(config.libellePaiement || 'Import fichier 3').trim();
+
+  // Normaliser la date au format PrestaShop yyyy-mm-dd hh:mm:ss
+  let dateAdd = '0000-00-00 00:00:00';
+  if (dateCommande) {
+    const parsed = new Date(
+      String(dateCommande).replace(/^(\d{2})\/(\d{2})\/(\d{4})$/, '$3-$2-$1')
+    );
+    if (!isNaN(parsed.getTime())) {
+      dateAdd = parsed.toISOString().replace('T', ' ').slice(0, 19);
+    }
+  }
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop>
+  <order_payment>
+    <order_reference>${nettoyerTexte(referenceCommande)}</order_reference>
+    <id_currency>${idCurrency}</id_currency>
+    <amount>${montant.toFixed(6)}</amount>
+    <payment_method>${nettoyerTexte(methodePaiement)}</payment_method>
+    <conversion_rate>1.000000</conversion_rate>
+    <transaction_id></transaction_id>
+    <card_number></card_number>
+    <card_brand></card_brand>
+    <card_expiration></card_expiration>
+    <card_holder></card_holder>
+    <date_add>${dateAdd}</date_add>
+  </order_payment>
+</prestashop>`;
+
+  const { donnees } = await requeteApi('order_payments', { methode: 'POST', xml });
+  const paiement = lireRessourceSimple(donnees, 'order_payment');
+  return enEntier(getValue(paiement?.id, 0), 0);
+};
+
+const listerPaiementsParReference = async (referenceCommande) => {
+  if (!referenceCommande) return [];
+  const filtre = encodeURIComponent(referenceCommande);
+  const { donnees } = await requeteApi(
+    `order_payments?filter[order_reference]=[${filtre}]&display=[id]&limit=100`
+  );
+
+  return lireCollectionRessource(donnees, 'order_payment')
+    .map((item) => enEntier(getValue(item?.id, 0), 0))
+    .filter(Boolean);
+};
+
+const supprimerPaiementCommande = async (idOrderPayment) => {
+  if (!idOrderPayment) return;
+  await requeteApi(`order_payments/${idOrderPayment}`, { methode: 'DELETE' });
+};
+
+const synchroniserPaiementCommande = async ({
+  referenceCommande,
+  totalTtc,
+  config,
+  dateCommande,
+  doitAvoirPaiement,
+}) => {
+  if (!referenceCommande) return;
+
+  const paiementsExistants = await listerPaiementsParReference(referenceCommande);
+
+  if (doitAvoirPaiement) {
+    // Eviter les doublons: on ne cree qu'en absence de paiement existant.
+    if (!paiementsExistants.length) {
+      await creerPaiementCommande(referenceCommande, totalTtc, config, dateCommande);
+    }
+    return;
+  }
+
+  // Regle stricte demandee: pour les autres etats, aucun paiement ne doit rester.
+  for (const idOrderPayment of paiementsExistants) {
+    await supprimerPaiementCommande(idOrderPayment);
+  }
 };
 
 const nettoyerHistoriquesCommande = async (idOrder, idEtat) => {
@@ -712,6 +823,21 @@ export const importerFichier3AvecApi = async (file, mapping, onProgress, options
   const config = { ...CONFIG_FICHIER3, ...options };
   const { headers, rows, separateur } = await lireApercuCsvFichier3(file, config.separateur, 0);
 
+  validerColonnesObligatoires({
+    mapping,
+    requiredFields: ['date', 'nom', 'email', 'pwd', 'adresse', 'achat', 'etat'],
+    labelByField: {
+      date: 'date',
+      nom: 'nom',
+      email: 'email',
+      pwd: 'pwd',
+      adresse: 'adresse',
+      achat: 'achat',
+      etat: 'etat',
+    },
+    fichier: 'fichier3',
+  });
+
   console.log('[fichier3] CSV parse', {
     separateurDetecte: separateur,
     totalHeaders: headers.length,
@@ -752,6 +878,7 @@ export const importerFichier3AvecApi = async (file, mapping, onProgress, options
       if (!ligne.email) throw new Error('Email manquant');
       if (!ligne.nom) throw new Error('Nom manquant');
       if (!ligne.achat) throw new Error('Achat manquant');
+      validerDateDdMmYyyy(ligne.date, { champ: 'date', ligne: done, obligatoire: true });
 
       notifier(`Ligne ${done}/${total}: traitement ${ligne.email}`);
 
@@ -777,9 +904,17 @@ export const importerFichier3AvecApi = async (file, mapping, onProgress, options
       if (!achats.length) {
         throw new Error('Aucun achat exploitable dans la colonne achat');
       }
+      for (const item of achats) {
+        validerMontantPositif(item.quantity, {
+          champ: `quantite (${item.reference || 'achat'})`,
+          ligne: done,
+          obligatoire: true,
+        });
+      }
 
       // 8) Calcul des totaux commande + resolution produit/combinaison.
       const { totalTtc } = await calculerTotalCommande(achats, config);
+      validerMontantPositif(totalTtc, { champ: 'total_commande', ligne: done, obligatoire: true });
       const idCarrier = cache.carriers || (cache.carriers = await trouverPremierCarrierId());
       if (!idCarrier) {
         throw new Error('Aucun transporteur actif trouve');
@@ -798,6 +933,11 @@ export const importerFichier3AvecApi = async (file, mapping, onProgress, options
         throw new Error(`statut "${ligne.etat}" introuvable dans les etats de commande`);
       }
 
+      const etatNormaliseLigne = normaliserTexte(ligne.etat || '');
+      const estStatutPaiementCsv =
+        etatNormaliseLigne === normaliserTexte('paiement accepte')
+        || etatNormaliseLigne === normaliserTexte('paiement a distance accepte');
+
       const cartItems = achats.map((item) => ({
         idProduit: item.idProduit,
         idCombination: item.idCombination,
@@ -814,13 +954,28 @@ export const importerFichier3AvecApi = async (file, mapping, onProgress, options
         ligne.etat,
         totalTtc,
         config,
-        idEtat
+        idEtat,
+        estStatutPaiementCsv
       );
 
+      // Nettoyer le panier d'import: evite qu'obtenirOuCreerPanierClient
+      // le recupere lors du prochain achat client (panier deja converti => 500).
+      try {
+        await requeteApi(`carts/${idCart}`, { methode: 'DELETE' });
+      } catch (_) {
+        // Ignoré: la commande est créée, le panier deviendra orphelin au pire.
+      }
+
+      // PrestaShop peut ignorer current_state lors du POST.
+      // On applique l'etat via order_history (methode officielle qui declenche
+      // les hooks et met a jour current_state) puis on force en PUT par securite.
       const idHistoriqueEtat = await creerHistoriqueCommande(idOrder, idEtat);
       if (!idHistoriqueEtat) {
         throw new Error(`statut "${ligne.etat}" non applique a la commande ${idOrder}`);
       }
+
+      // Forcer current_state directement via PUT pour garantir la coherence.
+      await forcerEtatCommande(idOrder, idEtat);
 
       try {
         await nettoyerHistoriquesCommande(idOrder, idEtat);
@@ -828,12 +983,27 @@ export const importerFichier3AvecApi = async (file, mapping, onProgress, options
         warnings.push(`Ligne ${done}: commande creee mais nettoyage des statuts impossible (${erreurHistorique.message})`);
       }
 
+      // 10) Paiement: synchroniser ps_order_payment selon le statut.
+      //     - paiements autorises: conserver/creer
+      //     - autres statuts: supprimer toute entree existante
+      try {
+        const referenceCommande = await obtenirReferenceCommande(idOrder);
+        await synchroniserPaiementCommande({
+          referenceCommande,
+          totalTtc,
+          config,
+          dateCommande: ligne.date,
+          doitAvoirPaiement: estStatutPaiementCsv,
+        });
+      } catch (erreurPaiement) {
+        warnings.push(`Ligne ${done}: commande creee mais synchronisation paiement impossible (${erreurPaiement.message})`);
+      }
+
       success += 1;
       notifier(`Ligne ${done}/${total}: commande creee pour ${ligne.email}`);
     } catch (erreur) {
       erreurs.push(`Ligne ${done}: ${erreur.message}`);
       ignored += 1;
-      warnings.push(`Ligne ${done}: ${erreur.message}`);
       notifier(`Ligne ${done}/${total}: ignoree`);
     }
   }
