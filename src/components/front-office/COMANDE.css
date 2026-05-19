@@ -1,0 +1,67 @@
+.commande-container {
+  background: #f5f5f5;
+  padding: 20px;
+  margin-top: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #0ea5e9;
+}
+
+.commande-container h2 {
+  margin-top: 0;
+  color: #1f2937;
+}
+
+.commande-customer {
+  color: #475569;
+  margin-bottom: 12px;
+}
+
+.commande-card {
+  background: #fff;
+  border-radius: 6px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.commande-card p {
+  margin: 8px 0;
+}
+
+.commande-loading,
+.commande-empty {
+  color: #64748b;
+  font-style: italic;
+}
+
+.commande-error {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  padding: 10px;
+  margin: 10px 0;
+}
+
+.commande-success {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  border-radius: 4px;
+  padding: 10px;
+  margin: 10px 0;
+}
+
+.commande-btn {
+  margin-top: 14px;
+  border: none;
+  border-radius: 4px;
+  background: #0284c7;
+  color: #fff;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.commande-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
